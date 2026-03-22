@@ -1,5 +1,6 @@
 import https from 'https';
 import { Api, Bot } from 'grammy';
+import telegramifyMarkdown from 'telegramify-markdown';
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
@@ -19,9 +20,8 @@ export interface TelegramChannelOpts {
 }
 
 /**
- * Send a message with Telegram Markdown parse mode, falling back to plain text.
- * Claude's output naturally matches Telegram's Markdown v1 format:
- *   *bold*, _italic_, `code`, ```code blocks```, [links](url)
+ * Convert CommonMark/GitHub markdown to Telegram MarkdownV2, then send.
+ * Falls back to plain text if conversion or sending fails.
  */
 async function sendTelegramMessage(
   api: { sendMessage: Api['sendMessage'] },
@@ -29,14 +29,19 @@ async function sendTelegramMessage(
   text: string,
   options: { message_thread_id?: number } = {},
 ): Promise<void> {
+  let converted: string;
   try {
-    await api.sendMessage(chatId, text, {
+    converted = telegramifyMarkdown(text, 'escape');
+  } catch {
+    converted = text;
+  }
+  try {
+    await api.sendMessage(chatId, converted, {
       ...options,
-      parse_mode: 'Markdown',
+      parse_mode: 'MarkdownV2',
     });
   } catch (err) {
-    // Fallback: send as plain text if Markdown parsing fails
-    logger.debug({ err }, 'Markdown send failed, falling back to plain text');
+    logger.debug({ err }, 'MarkdownV2 send failed, falling back to plain text');
     await api.sendMessage(chatId, text, options);
   }
 }
